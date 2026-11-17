@@ -218,11 +218,11 @@ As of the commit that adds this file:
 | NA `EBOOT.ELF` (self2elf.py) | OK, sha256 `0ee9a841...` |
 | `tod-fnmap sig` NA | 26,362 functions |
 | `tod-fnmap probe` (port's 129 EU function addresses) | 126 in a 5-step monotone map, 3 comment-only references unmatched |
-| NA PPU lift (`tools/lift_ppu.sh`) | queued in agentq (tod-na-lift); log build_mac/na_lift.log |
-| ps3recomp runtime library, macOS arm64 | configures cleanly (AppleClang 21, SDL2, glslang, spirv-cross, Metal); **153 of 173 units compile, 20 fail** (list below) |
-| Port sources, macOS arm64 (`tools/check_port_posix.sh`) | syntax check: all 36 pass except lift-only symbols (resolved by a lift) and the excluded D3D12 overlay; full object build queued (tod-port-check) |
+| NA PPU lift (`tools/lift_ppu.sh`) | OK: 32,170 functions lifted into 12 units (395 MB) |
+| ps3recomp runtime library, macOS arm64 | **builds** after M1 (173 arm64 objects, 0 errors; was 153/173). Fixes on `petralithic/ps3recomp` `macos/m1-runtime`, draft upstream PR [Re-TeRo17/ps3recomp#1](https://github.com/Re-TeRo17/ps3recomp/pull/1) |
+| Port sources, macOS arm64 (`tools/check_port_posix.sh`) | 36 of 37 compiled to arm64 objects; the last (`_stricmp` in `tod_cheat.cpp`) fixed since |
 
-The 20 runtime units that do not compile on arm64 macOS, by cause (all Windows- or x86-only code, mostly
+The 20 runtime units that did not compile on arm64 macOS before M1, by cause (all Windows- or x86-only code, mostly
 in the ToD fork's additions; nothing architectural):
 
 | Cause | Units |
@@ -234,11 +234,14 @@ in the ToD fork's additions; nothing architectural):
 | `struct stat::st_mtime` (macOS: `st_mtimespec`) | `cellSaveData.c` |
 | DXR ray tracing, D3D12 only | `rsx_rt.c` (exclude off Windows) |
 
+This working branch points `.gitmodules` at `petralithic/ps3recomp` (branch `macos/m1-runtime`) so a clone
+fetches the runtime fixes; branches meant for upstream PRs keep the Re-TeRo17 URL until that PR merges.
+
 ## 6. Milestones
 
 Each one is a separate, reviewable change; the EU/Windows build stays identical throughout.
 
-- **M1 Runtime on macOS.** Fix the 20 units in section 5 (in the ps3recomp fork, Windows unchanged); the runtime builds and passes its own tests on arm64;
+- **M1 Runtime on macOS (library builds; done 2026-11-17).** Fix the 20 units in section 5 (in the ps3recomp fork, Windows unchanged); the runtime builds and passes its own tests on arm64;
   `templates/project` boot smoke runs headless. Fix ToD-fork additions that assume Windows or x86
   (`SPU_RZ_FP_TLS` uses MXCSR round-toward-zero: needs an FPCR path on arm64, as RACiT's NEON work did).
 - **M2 Release table and NA hooks.** `versions/` table + generated header; hooks by role; CMake renames by

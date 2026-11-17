@@ -1,0 +1,11 @@
+[package]
+name = "tod-fnmap"
+version = "0.1.0"
+edition = "2021"
+description = "Per-version function signatures and address maps for the ToD PPU executable (no game code in its output)"
+license = "MIT"
+
+[dependencies]
+
+[profile.release]
+opt-level = 3

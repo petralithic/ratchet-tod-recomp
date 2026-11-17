@@ -33,6 +33,7 @@ ents.txt
 
 # Code generated from the game (PPU/SPU lifts) and SPU captures
 recompiled/
+recompiled_*/
 spu/
 spu_p/
 spu_dumps*/
@@ -84,3 +85,8 @@ Users*/
 # 1.2.1: the Options page script (rewrite of the game's Lua Options handler) and its compiled form stay out, as in 1.2.0
 src/patches/menu_opt_handler.inc
 tools/menu/lua/
+
+# macOS port: per-release signature files and address probes are generated from the game (out/ already
+# covers the default location), and the Rust tool's build output
+*.fnsig.tsv
+tools/tod-fnmap/target/

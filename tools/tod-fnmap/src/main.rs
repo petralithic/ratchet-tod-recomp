@@ -549,9 +549,88 @@ fn cmd_probe(elf_path: &str, addrs_path: &str, window: i64, only: Option<Vec<i64
     Ok(())
 }
 
+/// `check <B ELF> <list.tsv> --steps A0:D0,A1:D1,...`
+///
+/// Maps every A address of `list.tsv` (lines `kind<TAB>A-address[<TAB>note]`, kind = fn | ret | call | code)
+/// through a step function (from A address Ai on, B = A + Di) and checks the result in B:
+///   fn    B must be a function start (OPD entry or bl target)
+///   ret   the word before B must be a call (bl, bctrl or blrl: B is a return address); a bl target is printed and, when
+///         that target maps back to an A address of the list, that pair is checked as well
+///   call  B itself must be a bl (a call site)
+///   code  only mapped (an address inside a function)
+/// Prints `kind A B status detail`; exits 1 if any fn/ret check fails.
+fn cmd_check(elf_path: &str, list_path: &str, steps: &[(u64, i64)]) -> Result<(), String> {
+    let elf = Elf::load(elf_path)?;
+    let starts: BTreeSet<u64> = elf.function_starts().into_iter().collect();
+    let txt = fs::read_to_string(list_path).map_err(|e| format!("{list_path}: {e}"))?;
+    let map = |a: u64| -> u64 {
+        let mut d = 0i64;
+        for &(from, delta) in steps {
+            if a >= from {
+                d = delta;
+            }
+        }
+        (a as i64 + d) as u64
+    };
+    let mut rows: Vec<(String, u64)> = Vec::new();
+    for line in txt.lines() {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        let f: Vec<&str> = line.split('\t').collect();
+        if f.len() < 2 {
+            return Err(format!("{list_path}: bad line: {line}"));
+        }
+        let a = u64::from_str_radix(f[1].trim_start_matches("0x"), 16).map_err(|e| format!("{list_path}: {e}"))?;
+        rows.push((f[0].to_string(), a));
+    }
+    // B function start -> A address, for the bl-target cross-check
+    let back: HashMap<u64, u64> = rows.iter().filter(|r| r.0 == "fn").map(|r| (map(r.1), r.1)).collect();
+    let mut o = io::BufWriter::new(io::stdout().lock());
+    let mut bad = 0;
+    let _ = writeln!(o, "kind\tA\tB\tstatus\tdetail");
+    for (kind, a) in &rows {
+        let b = map(*a);
+        let (status, detail) = match kind.as_str() {
+            "fn" => {
+                if starts.contains(&b) { ("ok", String::new()) } else { bad += 1; ("FAIL", "not a function start in B".to_string()) }
+            }
+            // ret: B follows a call (bl, or an indirect bctrl/blrl); call: B is itself a bl
+            "ret" | "call" => {
+                let at = if kind == "ret" { b - 4 } else { b };
+                match elf.word(at) {
+                    Some(w) if w >> 26 == 18 && w & 3 == 1 => {
+                        let mut off = (w & 0x03FF_FFFC) as i64;
+                        if off & 0x0200_0000 != 0 {
+                            off -= 0x0400_0000;
+                        }
+                        let t = (at as i64 + off) as u64;
+                        let named = back.get(&t).map(|x| format!(" = A {x:08X}")).unwrap_or_default();
+                        ("ok", format!("bl {t:08X}{named}"))
+                    }
+                    Some(0x4E80_0421) if kind == "ret" => ("ok", "bctrl (indirect call)".to_string()),
+                    Some(0x4E80_0021) if kind == "ret" => ("ok", "blrl (indirect call)".to_string()),
+                    Some(w) => { bad += 1; ("FAIL", format!("word {w:08X} at {at:08X} is not a call")) }
+                    None => { bad += 1; ("FAIL", "outside the image".to_string()) }
+                }
+            }
+            "code" => ("mapped", String::new()),
+            k => return Err(format!("unknown kind {k}")),
+        };
+        let _ = writeln!(o, "{kind}\t{a:08X}\t{b:08X}\t{status}\t{detail}");
+    }
+    drop(o);
+    eprintln!("{} addresses, {} failed checks", rows.len(), bad);
+    if bad > 0 {
+        exit(1);
+    }
+    Ok(())
+}
+
 fn usage() -> ! {
     eprintln!(
-        "usage:\n  tod-fnmap sig <EBOOT.ELF>\n  tod-fnmap map <A.fnsig.tsv> <B.fnsig.tsv> [addrs.txt]\n  tod-fnmap probe <B EBOOT.ELF> <addrs.txt> [--window 0x400] [--deltas 0,0x30,...]"
+        "usage:\n  tod-fnmap sig <EBOOT.ELF>\n  tod-fnmap map <A.fnsig.tsv> <B.fnsig.tsv> [addrs.txt]\n  tod-fnmap probe <B EBOOT.ELF> <addrs.txt> [--window 0x400] [--deltas 0,0x30,...]\n  tod-fnmap check <B EBOOT.ELF> <list.tsv> --steps A0:D0,A1:D1,..."
     );
     exit(2)
 }
@@ -579,6 +658,17 @@ fn main() {
                 i += 2;
             }
             cmd_probe(&args[2], &args[3], w, only)
+        }
+        Some("check") if args.len() == 6 && args[4] == "--steps" => {
+            let mut steps = Vec::new();
+            for p in args[5].split(',') {
+                let (a, d) = p.split_once(':').unwrap_or_else(|| usage());
+                let a = u64::from_str_radix(a.trim_start_matches("0x"), 16).unwrap_or_else(|_| usage());
+                let d = i64::from_str_radix(d.trim_start_matches("0x"), 16).unwrap_or_else(|_| usage());
+                steps.push((a, d));
+            }
+            steps.sort();
+            cmd_check(&args[2], &args[3], &steps)
         }
         _ => usage(),
     };

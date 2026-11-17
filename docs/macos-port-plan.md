@@ -219,14 +219,26 @@ As of the commit that adds this file:
 | `tod-fnmap sig` NA | 26,362 functions |
 | `tod-fnmap probe` (port's 129 EU function addresses) | 126 in a 5-step monotone map, 3 comment-only references unmatched |
 | NA PPU lift (`tools/lift_ppu.sh`) | queued in agentq (tod-na-lift); log build_mac/na_lift.log |
-| ps3recomp runtime library, macOS arm64 | configures cleanly (AppleClang 21, SDL2, glslang, spirv-cross); build queued (tod-rt-build), log build_mac/rt_build.log |
+| ps3recomp runtime library, macOS arm64 | configures cleanly (AppleClang 21, SDL2, glslang, spirv-cross, Metal); **153 of 173 units compile, 20 fail** (list below) |
 | Port sources, macOS arm64 (`tools/check_port_posix.sh`) | syntax check: all 36 pass except lift-only symbols (resolved by a lift) and the excluded D3D12 overlay; full object build queued (tod-port-check) |
+
+The 20 runtime units that do not compile on arm64 macOS, by cause (all Windows- or x86-only code, mostly
+in the ToD fork's additions; nothing architectural):
+
+| Cause | Units |
+| --- | --- |
+| MSVC `__declspec(thread)` (C11 `_Thread_local` / `__thread` elsewhere) | `rsx_draw_engine.c`, `anim_ref.h` users: `anim_fx.c`, `anim_hle.c`, `anim_ref.c`, `capture_patch.c` |
+| x86 intrinsics: `<intrin.h>`, `<immintrin.h>`, `__rdtsc`, MXCSR round-toward-zero | `spu_channels.c`, `spu_coherency.c`, `sys_timer.c`, `timeline.c`, `cellGcmSys.c` (needs `mach_absolute_time` / `cntvct_el0` and an FPCR rounding-mode path) |
+| Win32 types or calls used without `win32_compat.h` (or missing from it: `QueryThreadCycleTime`, `VirtualQuery`, `GetModuleHandleA`, `SUCCEEDED`, `LONGLONG`, `_strnicmp`) | `cellAudio.c`, `cellPad.c`, `cellSpurs.c`, `rsx_dispatch.c`, `spu_raw.c`, `sys_semaphore.c`, `sys_mutex.c` (`lv2_usec_deadline` declared only under `_WIN32`) |
+| SEH `__try`/`__except` | `spurs_policy.c` |
+| `struct stat::st_mtime` (macOS: `st_mtimespec`) | `cellSaveData.c` |
+| DXR ray tracing, D3D12 only | `rsx_rt.c` (exclude off Windows) |
 
 ## 6. Milestones
 
 Each one is a separate, reviewable change; the EU/Windows build stays identical throughout.
 
-- **M1 Runtime on macOS.** ps3recomp runtime (ToD fork) builds and passes its own tests on arm64;
+- **M1 Runtime on macOS.** Fix the 20 units in section 5 (in the ps3recomp fork, Windows unchanged); the runtime builds and passes its own tests on arm64;
   `templates/project` boot smoke runs headless. Fix ToD-fork additions that assume Windows or x86
   (`SPU_RZ_FP_TLS` uses MXCSR round-toward-zero: needs an FPCR path on arm64, as RACiT's NEON work did).
 - **M2 Release table and NA hooks.** `versions/` table + generated header; hooks by role; CMake renames by

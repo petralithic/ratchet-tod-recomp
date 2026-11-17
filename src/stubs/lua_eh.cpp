@@ -20,6 +20,7 @@
  * depth counter (ppu_loader.cpp s_icall_depth, manual ++/--).
  */
 #include "ppu_recomp.h"
+#include "release/tod_addr.h"   /* this release's code addresses (versions/addresses.tsv) */
 
 #include <stdint.h>
 #include <stdio.h>
@@ -32,8 +33,8 @@ void ps3_indirect_call(ppu_context* ctx);
 int* ps3_ppu_dispatch_depth_slot(void);
 extern PPU_THREAD_LOCAL void (*g_trampoline_fn)(void*);
 }
-void func_00671A28_lifted(ppu_context* ctx);   /* unused fallback, kept for symmetry */
-void func_008268B4_lifted(ppu_context* ctx);
+void TOD_HOOK_LIFTED(LUA_RAWRUNPROTECTED)(ppu_context* ctx);   /* unused fallback, kept for symmetry */
+void TOD_HOOK_LIFTED(LONGJMP)(ppu_context* ctx);
 
 namespace {
 
@@ -116,7 +117,7 @@ struct Saved {
 } // namespace
 
 /* int luaD_rawrunprotected(lua_State* L, Pfunc f, void* ud)   r3=L r4=f(OPD ptr) r5=ud -> r3 status */
-void func_00671A28(ppu_context* ctx)
+void TOD_HOOK(LUA_RAWRUNPROTECTED)(ppu_context* ctx)
 {
     const uint32_t L  = (uint32_t)ctx->gpr[3];
     const uint32_t f  = (uint32_t)ctx->gpr[4];
@@ -142,7 +143,7 @@ void func_00671A28(ppu_context* ctx)
         ctx->gpr[3] = L; ctx->gpr[4] = ud;
         ctx->ctr = vm_read32(f);
         ctx->gpr[2] = vm_read32(f + 4);
-        ctx->lr = 0x00671A90;
+        ctx->lr = TOD_ADDR(00671A90);
         ps3_indirect_call(ctx);                            /* f(L, ud) */
         status = vm_read32(nsp + 0x294);                   /* normally still 0 */
     } catch (const GuestLongjmp& e) {
@@ -169,7 +170,7 @@ void func_00671A28(ppu_context* ctx)
 
 /* void longjmp(jmp_buf buf, int val)  r3=buf r4=val. Non-local only for buffers a native
  * func_00671A28 frame owns; anything else keeps the lifted (broken-by-design) behaviour. */
-void func_008268B4(ppu_context* ctx)
+void TOD_HOOK(LONGJMP)(ppu_context* ctx)
 {
     const uint32_t buf = align16((uint32_t)ctx->gpr[3]);
     for (size_t i = t_frames.size(); i-- > 0; ) {
@@ -180,5 +181,5 @@ void func_008268B4(ppu_context* ctx)
             throw GuestLongjmp{ buf, ctx->gpr[4], (uint32_t)ctx->lr, (uint32_t)ctx->gpr[1] };
         }
     }
-    func_008268B4_lifted(ctx);
+    TOD_HOOK_LIFTED(LONGJMP)(ctx);
 }

@@ -8,24 +8,25 @@
  * (the orange glow, every 1.5 s) the quads after it move by a slot and for one frame two quads are drawn from the other pass's
  * bytes: a piece of the menu (a stat bar, the left frame, the weapon icons) vanishes for a frame
  * (log\shop116 r_T83: positions read as texture coordinates; PS3_WATCH_WRITE=202B4780 -> lr 0x629530).
- * func_0081A728 is renamed _lifted (tools/ui_copy_ppu_patch.cmake). Here the UI copies are watched: the passes fill the bytes
+ * func_0081A728 is renamed _lifted (tools/tod_release.cmake). Here the UI copies are watched: the passes fill the bytes
  * downwards, so a copy above the last one starts a pass, and in a menu it first waits until the renderer has consumed what
  * was queued (main.cpp tod_ui_pass_start). TOD_MENU_SYNC=0 turns it off.
  */
 #include "ppu_recomp.h"
+#include "release/tod_addr.h"   /* this release's code addresses (versions/addresses.tsv) */
 
-void func_0081A728_lifted(ppu_context* ctx);
+void TOD_HOOK_LIFTED(UI_VERTEX_COPY)(ppu_context* ctx);
 extern "C" void tod_ui_pass_start(void);
 extern "C" int tod_menu_sync_on(void);
 
-void func_0081A728(ppu_context* ctx)
+void TOD_HOOK(UI_VERTEX_COPY)(ppu_context* ctx)
 {
     const uint32_t lr = (uint32_t)ctx->lr;
-    if ((lr == 0x006292F4u || lr == 0x00629530u) && tod_menu_sync_on()) {
+    if ((lr == TOD_ADDR(006292F4) || lr == TOD_ADDR(00629530)) && tod_menu_sync_on()) {
         static uint32_t last;
         const uint32_t dst = (uint32_t)ctx->gpr[3];
         if (dst > last) tod_ui_pass_start();
         last = dst;
     }
-    func_0081A728_lifted(ctx);
+    TOD_HOOK_LIFTED(UI_VERTEX_COPY)(ctx);
 }

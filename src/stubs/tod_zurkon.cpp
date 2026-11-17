@@ -17,13 +17,14 @@
  * DISPOSITIVI) are handled by the pause hook in tod_settings_menu.cpp (kZurkonHook), which asks tod_zurkon_on().
  */
 #include "ppu_recomp.h"
+#include "release/tod_addr.h"   /* this release's code addresses (versions/addresses.tsv) */
 
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-void func_00462F38(ppu_context* ctx);
+void TOD_HOOK(WEAPON_DESC_LOOKUP)(ppu_context* ctx);
 extern "C" uint64_t tod_gcall(void (*fn)(ppu_context*), uint64_t a0, uint64_t a1);   /* tod_cheat.cpp */
 extern "C" uint32_t tod_hero_entity(void);                                           /* tod_cheat.cpp */
 extern "C" int tod_guest_ok(void);                                                   /* tod_cheat.cpp */
@@ -98,7 +99,7 @@ extern "C" void tod_zurkon_poll(void)
     const int on = option_on();
     if (!on && !s_applied) return;
     if (!tod_guest_ok() || !tod_hero_entity()) return;
-    const uint32_t d = (uint32_t)tod_gcall(func_00462F38, kZurkon, 0);
+    const uint32_t d = (uint32_t)tod_gcall(TOD_HOOK(WEAPON_DESC_LOOKUP), kZurkon, 0);
     if (!gp(d)) return;
     const uint32_t b = vm_read32(d + 0x48);
     if (!gp(b)) return;

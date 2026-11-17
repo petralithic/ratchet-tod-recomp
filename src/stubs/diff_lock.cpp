@@ -7,7 +7,7 @@
  * S+0x18 a clamped linear term, S+0x50 = 1 (wiki 31_modello_di_ratchet, "Difficolta' dinamica").
  * S+0 comes from the play clock (func_002CE21C), S+4 from the TrapDoor result (func_002CE5F0).
  *
- * tools/combat_log_ppu_patch.cmake (tod_lift_rename) renames the lifted definition to func_002CDDA8_lifted; this file
+ * tools/tod_release.cmake renames the lifted definition to func_002CDDA8_lifted; this file
  * provides func_002CDDA8. With TOD_DIFF_LOCK=1 it puts the centre rating in S+0 and 0 in S+4 for the call only, so the
  * game itself computes its medium multipliers (ratio 0), then puts the real inputs back: the clock keeps running and
  * turning the lock off returns the real value at the next call.
@@ -20,6 +20,7 @@
  * GAME OPTIONS row / tod.ini / the F1 page change it live (applied when the game runs again after the pause menu).
  */
 #include "ppu_recomp.h"
+#include "release/tod_addr.h"   /* this release's code addresses (versions/addresses.tsv) */
 
 #include <math.h>
 #include <stdint.h>
@@ -30,8 +31,8 @@
 #define WIN32_LEAN_AND_MEAN
 #include "platform/tod_platform.h"   /* <windows.h> on Windows */
 
-void func_002CDDA8_lifted(ppu_context* ctx);
-void func_002CE5F0_lifted(ppu_context* ctx);
+void TOD_HOOK_LIFTED(DIFF_MULTIPLIERS)(ppu_context* ctx);
+void TOD_HOOK_LIFTED(DIFF_PER_FRAME)(ppu_context* ctx);
 
 static float rdf(uint32_t a)
 {
@@ -78,7 +79,7 @@ static bool read_env()
  * for the game's next rebuild. Every 30 frames the settings are read again; on a change the multipliers are rebuilt here at
  * once (a change applies without a restart). The call is made at this function's entry with a copy of
  * the context, which is put back afterwards: func_002CDDA8 only reads its globals through r2 and keeps below r1. */
-void func_002CE5F0(ppu_context* ctx)
+void TOD_HOOK(DIFF_PER_FRAME)(ppu_context* ctx)
 {
     static int n = 0;
     static bool first = true;
@@ -87,15 +88,15 @@ void func_002CE5F0(ppu_context* ctx)
         const bool changed = read_env();
         if (changed && !first) {
             ppu_context saved = *ctx;
-            func_002CDDA8(ctx);
+            TOD_HOOK(DIFF_MULTIPLIERS)(ctx);
             *ctx = saved;
         }
         first = false;
     }
-    func_002CE5F0_lifted(ctx);
+    TOD_HOOK_LIFTED(DIFF_PER_FRAME)(ctx);
 }
 
-void func_002CDDA8(ppu_context* ctx)
+void TOD_HOOK(DIFF_MULTIPLIERS)(ppu_context* ctx)
 {
     static bool init = false;
     static float last_r = -1.f, last_h = -1.f, last_e = -1.f;
@@ -108,7 +109,7 @@ void func_002CDDA8(ppu_context* ctx)
     const uint32_t t = vm_read32(r2 - 0xEA0) + 0x10000;
     const bool ok = s >= 0x10000 && s < 0x40000000u && t >= 0x10000 && t < 0x40000000u;
     if (!ok) {
-        func_002CDDA8_lifted(ctx);
+        TOD_HOOK_LIFTED(DIFF_MULTIPLIERS)(ctx);
         return;
     }
     const float in0 = rdf(s + 0), in4 = rdf(s + 4);
@@ -128,12 +129,12 @@ void func_002CDDA8(ppu_context* ctx)
         }
     }
     if (!lock) {
-        func_002CDDA8_lifted(ctx);
+        TOD_HOOK_LIFTED(DIFF_MULTIPLIERS)(ctx);
         return;
     }
     wrf(s + 0, rdf(t + 0xFA8) * level); // centre x level: ratio (r - c) / c = level - 1, from -1 (story) to +1 (extreme)
     wrf(s + 4, 0.f);
-    func_002CDDA8_lifted(ctx);
+    TOD_HOOK_LIFTED(DIFF_MULTIPLIERS)(ctx);
     wrf(s + 0, in0);
     wrf(s + 4, in4);
 }

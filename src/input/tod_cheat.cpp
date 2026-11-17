@@ -102,6 +102,7 @@
 #include <set>
 
 #include "ppu_recomp.h"        /* ppu_context, vm_*, func_XXXXXXXX declarations */
+#include "release/tod_addr.h"   /* this release's code addresses (versions/addresses.tsv) */
 #include "platform/tod_platform.h"   /* win32_compat.h: GetTickCount64, GetAsyncKeyState; _stricmp off Windows */
 
 extern "C" unsigned g_tod_hero_handle;   /* src/main.cpp tod_fntrace: from set_follow_cam */
@@ -233,7 +234,7 @@ uint32_t health_comp(uint32_t h, double t)
     const uint32_t ent = entity_of(h), obj = ent ? vm_read32(ent + 0x40) : 0;
     if (!gp(obj)) { s_hc = 0; return 0; }
     if (guest_ok() && (h != s_hc_h || obj != s_hc_obj || t - s_hc_t >= 1.0)) {
-        const uint32_t hc = (uint32_t)gcall(func_00251F68, obj, 0x6C);
+        const uint32_t hc = (uint32_t)gcall(TOD_FUNC(00251F68), obj, 0x6C);
         if (hc != s_hc) fprintf(stderr, "[cheat] health component handle=%08X obj=%08X -> HC=%08X\n", h, obj, hc);
         s_hc = gp(hc) ? hc : 0; s_hc_h = h; s_hc_obj = obj; s_hc_t = t;
     }
@@ -255,8 +256,8 @@ void scan_hero(double t)
     for (uint32_t idx = 0; idx <= maxi; idx++) {
         const uint32_t ent = base + idx * 384u, h = vm_read32(ent + 0x64), obj = vm_read32(ent + 0x40);
         if (!h || h == 0xFFFFFFFFu || (h & 0xFFFF) != idx || !gp(obj) || !gp(vm_read32(obj))) continue;
-        if (!((uint32_t)gcall(func_0024F1D8, obj, 0xB9) & 0xFF)) continue;
-        const uint32_t hc = (uint32_t)gcall(func_00251F68, obj, 0x6C);
+        if (!((uint32_t)gcall(TOD_FUNC(0024F1D8), obj, 0xB9) & 0xFF)) continue;
+        const uint32_t hc = (uint32_t)gcall(TOD_FUNC(00251F68), obj, 0x6C);
         if (cands < 8) fprintf(stderr, "[cheat] scan: candidate handle=%08X ent=%08X obj=%08X HC=%08X\n", h, ent, obj, hc);
         cands++;
         if (gp(hc) && !s_scan_h) { s_scan_h = h; fprintf(stderr, "[cheat] hero found by entity scan: handle=%08X (idx %u of %u)\n", h, idx, maxi); }
@@ -270,10 +271,10 @@ void set_cheat(long n, long st)
 {
     if (n < 0 || n > 13) { fprintf(stderr, "[cheat] cheat: N=%ld out of range 0..13\n", n); return; }
     if (st < 0 || st > 7) st = 0;
-    gcall(func_0027A618, (uint64_t)n, (uint64_t)st);   /* core of Lua set_cheat_state */
+    gcall(TOD_FUNC(0027A618), (uint64_t)n, (uint64_t)st);   /* core of Lua set_cheat_state */
     const uint32_t P = vm_read32(kProfile_slot), B = vm_read32(kCheatBase_slot);
     if (gp(P)) vm_write8(P + 0x31D0 + (uint32_t)n, (uint8_t)st);
-    if (st && gp(B) && vm_read32(B + 0x8708) < 840) gcall(func_0027A608, 840, 0);   /* core of set_cheat_points */
+    if (st && gp(B) && vm_read32(B + 0x8708) < 840) gcall(TOD_FUNC(0027A608), 840, 0);   /* core of set_cheat_points */
     fprintf(stderr, "[cheat] cheat %ld = state %ld: runtime u8[%08X]=%u points=%u\n", n, st, gp(B) ? B + 0x86F8 + (uint32_t)n : 0,
             gp(B) ? vm_read8(B + 0x86F8 + (uint32_t)n) : 0, gp(B) ? vm_read32(B + 0x8708) : 0);
 }
@@ -393,7 +394,7 @@ bool warp_to(uint32_t h, float x, float y, float z)
     const float ox = rf(ent + 0x30), oy = rf(ent + 0x34), oz = rf(ent + 0x38);
     for (uint32_t k = 0; k < 0x30; k += 4) vm_write32(rec + k, vm_read32(ent + k));
     wf(rec + 0x30, x); wf(rec + 0x34, y); wf(rec + 0x38, z); vm_write32(rec + 0x3C, vm_read32(ent + 0x3C));
-    gcall(func_0028A070, h, id, (uint64_t)s_warp_flag);
+    gcall(TOD_FUNC(0028A070), h, id, (uint64_t)s_warp_flag);
     for (uint32_t k = 0; k < 0x90; k += 4) vm_write32(rec + k, borrow ? saved[k / 4] : 0);
     fprintf(stderr, "[warp] hero %08X ent=%08X (%.2f,%.2f,%.2f) -> (%.2f,%.2f,%.2f) via record %u%s flag=%d, now ent=(%.2f,%.2f,%.2f)%c", h, ent, ox, oy, oz,
             x, y, z, id, borrow ? " (borrowed)" : "", s_warp_flag, rf(ent + 0x30), rf(ent + 0x34), rf(ent + 0x38), 10);
@@ -441,17 +442,17 @@ bool cine_run(const std::string& name)
       for (uint32_t i = 0; i < 512; i++) if (vm_read32(tb + 0x580 + i * 4)) cnt++;
       for (uint32_t i = 0, k = 0; i < 512 && k < 3; i++) { const uint32_t v = vm_read32(tb + 0x580 + i * 4); if (v) { k++; fprintf(stderr, "[cine] slot %u = %08X%c", i, v, 10); } }
       fprintf(stderr, "[cine] registry tb=%08X nonzero slots=%u, bucket(%s)=%u -> %08X; lookup stub 24F4D8('%s') = %d%c", tb, cnt, name.c_str(), hv,
-              vm_read32(tb + 0x580 + hv * 4), name.c_str(), (int)(int32_t)gcall(func_0024F4D8, buf, 0), 10); }
-    { const uint32_t cid = (uint32_t)gcall(func_002D1460, 0, 0), tb6 = vm_read32(kTocLua - 0x6FD0), row = tb6 + ((cid << 2) + 0x10000u - 31088u);
+              vm_read32(tb + 0x580 + hv * 4), name.c_str(), (int)(int32_t)gcall(TOD_FUNC(0024F4D8), buf, 0), 10); }
+    { const uint32_t cid = (uint32_t)gcall(TOD_FUNC(002D1460), 0, 0), tb6 = vm_read32(kTocLua - 0x6FD0), row = tb6 + ((cid << 2) + 0x10000u - 31088u);
       fprintf(stderr, "[cine] ctx id=%u row=%08X mask[+0x14]=%08X (tb=%08X)%c", cid, row, vm_read32(row + 0x14), tb6, 10); }
-    gcall(func_002506E8, L, buf);
+    gcall(TOD_FUNC(002506E8), L, buf);
     vm_write32(L + 0xC, otop);
-    const uint64_t r = gcall(func_002CAB78, L, 0);
+    const uint64_t r = gcall(TOD_FUNC(002CAB78), L, 0);
     const uint32_t ntop = vm_read32(L + 8);
     fprintf(stderr, "[cine] queue_cinematic returned %d, top now %08X (+%u TValues), result tt=%u val=%u%c", (int)(int32_t)r, ntop, (ntop - otop) / 8,
             ntop >= otop + 8 ? vm_read32(ntop - 8) : 99u, ntop >= otop + 8 ? vm_read32(ntop - 4) : 99u, 10);
     vm_write32(L + 8, otop); vm_write32(L + 0xC, obase);
-    cine_dump("after-queue", (int)(int32_t)gcall(func_0024F4D8, buf, 0));
+    cine_dump("after-queue", (int)(int32_t)gcall(TOD_FUNC(0024F4D8), buf, 0));
     return true;
 }
 
@@ -489,9 +490,9 @@ bool lua_exec(const std::string& code)
     const uint32_t buf = ((uint32_t)g_active_ctx->gpr[1] - 0x900u - (uint32_t)code.size() - 16u) & ~0xFu;
     for (size_t i = 0; i <= code.size(); i++) vm_write8(buf + (uint32_t)i, i < code.size() ? (uint8_t)code[i] : 0);
     fprintf(stderr, "[lua] exec L=%08X top=%08X base=%08X: %s%c", L, otop, obase, code.c_str(), 10);
-    gcall(func_002506E8, L, buf);                 /* lua_pushstring(L, buf) */
+    gcall(TOD_FUNC(002506E8), L, buf);                 /* lua_pushstring(L, buf) */
     vm_write32(L + 0xC, otop);                    /* base -> the string = arg 1 */
-    const uint32_t nres = (uint32_t)gcall_toc(func_0066E378, kTocLib, L);   /* loadstring */
+    const uint32_t nres = (uint32_t)gcall_toc(TOD_FUNC(0066E378), kTocLib, L);   /* loadstring */
     const uint32_t t1 = vm_read32(L + 8);
     const uint32_t tt = t1 >= otop + 16 ? vm_read32(t1 - 8) : 99u;
     if (nres != 1 || tt != 6) {
@@ -502,7 +503,7 @@ bool lua_exec(const std::string& code)
         return true;
     }
     vm_write32(L + 0xC, t1 - 8);                  /* base -> the compiled function */
-    const uint32_t r = (uint32_t)gcall_toc(func_0066E7A8, kTocLib, L);       /* pcall(f) */
+    const uint32_t r = (uint32_t)gcall_toc(TOD_FUNC(0066E7A8), kTocLib, L);       /* pcall(f) */
     const uint32_t ntop = vm_read32(L + 8), nb = vm_read32(L + 0xC);
     fprintf(stderr, "[lua] pcall returned %u, status slot tt=%u val=%u", r, vm_read32(nb), vm_read32(nb + 4));
     if (vm_read32(nb) == 1 && vm_read32(nb + 4) == 0 && vm_read32(nb + 8) == 4) {   /* 14/11: false + error string: print it */
@@ -545,15 +546,15 @@ int lua_exec_L(uint32_t L, const char* src, uint32_t arg_tv)
     }
     const uint32_t buf = s_srcbuf ? s_srcbuf : (((uint32_t)g_active_ctx->gpr[1] - 0x900u - (uint32_t)n - 16u) & ~0xFu);
     for (size_t i = 0; i <= n; i++) vm_write8(buf + (uint32_t)i, i < n ? (uint8_t)src[i] : 0);
-    gcall(func_002506E8, L, buf);                 /* lua_pushstring(L, buf) */
+    gcall(TOD_FUNC(002506E8), L, buf);                 /* lua_pushstring(L, buf) */
     vm_write32(L + 0xC, otop);
-    const uint32_t nres = (uint32_t)gcall_toc(func_0066E378, kTocLib, L);   /* loadstring */
+    const uint32_t nres = (uint32_t)gcall_toc(TOD_FUNC(0066E378), kTocLib, L);   /* loadstring */
     const uint32_t t1 = vm_read32(L + 8);
     const uint32_t tt = t1 >= otop + 16 ? vm_read32(t1 - 8) : 99u;
     int ok = 0;
     if (nres == 1 && tt == 6) {
         vm_write32(L + 0xC, t1 - 8);
-        gcall_toc(func_0066E7A8, kTocLib, L);     /* pcall(f) */
+        gcall_toc(TOD_FUNC(0066E7A8), kTocLib, L);     /* pcall(f) */
         const uint32_t nb = vm_read32(L + 0xC);
         ok = (vm_read32(nb) == 1 && vm_read32(nb + 4) == 1) ? 1 : 0;
         /* arg_tv: the chunk returned a function (pcall left: true, f); call f(value at arg_tv) the same way (the main chunk of
@@ -566,7 +567,7 @@ int lua_exec_L(uint32_t L, const char* src, uint32_t arg_tv)
             vm_write32(fslot + 8, vm_read32(arg_tv)); vm_write32(fslot + 12, vm_read32(arg_tv + 4));
             vm_write32(L + 8, fslot + 16);
             vm_write32(L + 0xC, fslot);
-            gcall_toc(func_0066E7A8, kTocLib, L);     /* pcall(f, value) */
+            gcall_toc(TOD_FUNC(0066E7A8), kTocLib, L);     /* pcall(f, value) */
             const uint32_t nb2 = vm_read32(L + 0xC);
             ok = (vm_read32(nb2) == 1 && vm_read32(nb2 + 4) == 1) ? 2 : 0;
         }
@@ -678,7 +679,7 @@ bool run_oneshot(const std::string& c, uint32_t h, double t)
         const long n = strtol(c.c_str() + 6, 0, 10);
         const uint32_t ba = bolts_addr();
         const uint32_t before = ba ? vm_read32(ba) : 0;
-        gcall(func_0028A850, h, (uint64_t)(int64_t)n);   /* hero_add_bolts(handle, n) */
+        gcall(TOD_FUNC(0028A850), h, (uint64_t)(int64_t)n);   /* hero_add_bolts(handle, n) */
         const uint32_t after = ba ? vm_read32(ba) : 0;
         fprintf(stderr, "[cheat] bolts += %ld via 0028A850: [%08X] %u -> %u\n", n, ba, before, after);
         if (ba && after == before && n) {
@@ -1016,7 +1017,7 @@ bool run_oneshot(const std::string& c, uint32_t h, double t)
             void (*stf)(void*) = g_trampoline_fn;
             g_trampoline_fn = nullptr;
             g_active_ctx = &c2;
-            func_0068F570(&c2);
+            TOD_FUNC(0068F570)(&c2);
             while (g_trampoline_fn) { void (*tf)(void*) = g_trampoline_fn; g_trampoline_fn = nullptr; tf(&c2); }
             g_active_ctx = cur;
             g_trampoline_fn = stf;
@@ -1428,7 +1429,7 @@ bool run_oneshot(const std::string& c, uint32_t h, double t)
                 void (*stf)(void*) = g_trampoline_fn;
                 g_trampoline_fn = nullptr;
                 g_active_ctx = &c2;
-                g_tod_spawn_cloning = 1; func_0068ED48(&c2); g_tod_spawn_cloning = 0;
+                g_tod_spawn_cloning = 1; TOD_HOOK(SPAWN_CLASS_2)(&c2); g_tod_spawn_cloning = 0;
                 while (g_trampoline_fn) { void (*tf)(void*) = g_trampoline_fn; g_trampoline_fn = nullptr; tf(&c2); }
                 g_active_ctx = cur2;
                 g_trampoline_fn = stf;
@@ -1460,11 +1461,11 @@ bool run_oneshot(const std::string& c, uint32_t h, double t)
                     /* placed mobys start obviated (hidden, asleep) until their pod is unobviated: Lua unobviate(pod) calls, for
                      * every member, func_0024F878(entity) (stub -> func_0068DE20, r2 = 0x89FF20 like the Lua natives) */
                     for (uint32_t o = 0x40; o <= 0x400; o += 0x10) vm_write64(sp3 - o + 0x28, kTocLua);
-                    tod_gcall_toc(func_0024F878, kTocLua, ne, 0);
+                    tod_gcall_toc(TOD_FUNC(0024F878), kTocLua, ne, 0);
                     for (uint32_t o = 0x40; o <= 0x400; o += 0x10) vm_write64(sp3 - o + 0x28, toc2);
-                    tod_gcall_toc(func_00277918, toc2, nh, 0);
+                    tod_gcall_toc(TOD_FUNC(00277918), toc2, nh, 0);
                     for (uint32_t o = 0x40; o <= 0x400; o += 0x10) vm_write64(sp3 - o + 0x28, toc2);
-                    tod_gcall_toc(func_0027E3A0, toc2, nh, 0);
+                    tod_gcall_toc(TOD_FUNC(0027E3A0), toc2, nh, 0);
                 }
                 fprintf(stderr, "[spawn] idx=%u #%u clone of record %08X -> %08X ent %08X handle %08X%s at %.1f %.1f %.1f (hero %.1f %.1f %.1f)\n", idx, k, src,
                         rec, ne, nh, s_tod_spawn_nowake ? "" : " woken+alerted", x, y, z, hx, hy, hz);
@@ -1485,7 +1486,7 @@ bool run_oneshot(const std::string& c, uint32_t h, double t)
             void (*saved_tf)(void*) = g_trampoline_fn;
             g_trampoline_fn = nullptr;
             g_active_ctx = &cc;
-            func_0068EA08(&cc);
+            TOD_HOOK(SPAWN_CLASS_1)(&cc);
             while (g_trampoline_fn) { void (*tf)(void*) = g_trampoline_fn; g_trampoline_fn = nullptr; tf(&cc); }
             g_active_ctx = cur;
             g_trampoline_fn = saved_tf;
@@ -1523,7 +1524,7 @@ bool run_oneshot(const std::string& c, uint32_t h, double t)
     if (c == "wdesc" || !c.compare(0, 7, "wflags=") || !c.compare(0, 8, "wlevels=") || !c.compare(0, 5, "wset=")) {   /* diagnostic (10/11): weapon type descriptors (func_00462F38) */
         if (c == "wdesc") {
             for (unsigned idx = 0; idx < 31; idx++) {
-                const uint32_t d = (uint32_t)gcall(func_00462F38, idx, 0);
+                const uint32_t d = (uint32_t)gcall(TOD_HOOK(WEAPON_DESC_LOOKUP), idx, 0);
                 if (!d) continue;
                 char line[12000]; int n = snprintf(line, sizeof line, "[wdesc] %u desc %08X:", idx, d);
                 for (uint32_t o = 0; o < 0x80; o += 4) n += snprintf(line + n, sizeof line - n, " %08X", vm_read32(d + o));
@@ -1542,14 +1543,14 @@ bool run_oneshot(const std::string& c, uint32_t h, double t)
         } else if (!c.compare(0, 5, "wset=")) {   /* wset=ID:OFF:VAL writes u32 [desc+OFF] (test, 11/11: Zurkon's model ids) */
             unsigned id = 0, off = 0, v = 0;
             if (sscanf(c.c_str() + 5, "%u:%u:%u", &id, &off, &v) == 3 && id < 31 && off < 0x80 && !(off & 3)) {
-                const uint32_t d = (uint32_t)gcall(func_00462F38, id, 0);
+                const uint32_t d = (uint32_t)gcall(TOD_HOOK(WEAPON_DESC_LOOKUP), id, 0);
                 if (d) { const uint32_t old = vm_read32(d + off); vm_write32(d + off, v);
                          fprintf(stderr, "[cheat] wset %u: [%08X+%X] %08X -> %08X\n", id, d, off, old, v); }
             }
         } else if (!c.compare(0, 8, "wlevels=")) {   /* wlevels=ID:N: give a 1-level type N extra levels (test) */
             unsigned id = 0, nl = 0;
             if (sscanf(c.c_str() + 8, "%u:%u", &id, &nl) == 2 && id < 31 && nl >= 1 && nl <= 9) {
-                const uint32_t d = (uint32_t)gcall(func_00462F38, id, 0), b = d ? vm_read32(d + 0x48) : 0;
+                const uint32_t d = (uint32_t)gcall(TOD_HOOK(WEAPON_DESC_LOOKUP), id, 0), b = d ? vm_read32(d + 0x48) : 0;
                 if (b >= 0x10000 && b < 0xF0000000u) {
                     static const float thr[9] = { 1000, 2200, 3640, 5370, 5500, 20000, 37400, 58300, 83300 };   /* Combuster / Grenade XP */
                     for (uint32_t f = 0; f < 0x460; f += 0x50)   /* 14 tables of 20 words, entry n = level n */
@@ -1568,7 +1569,7 @@ bool run_oneshot(const std::string& c, uint32_t h, double t)
         } else if (!c.compare(0, 7, "wflags=")) {   /* wflags=ID:VAL writes the low 2 bits of u32 [desc+0x18] (1 = gadget, 2 = device, 0 = weapon) */
             unsigned id = 0, v = 0;
             if (sscanf(c.c_str() + 7, "%u:%u", &id, &v) == 2 && id < 31) {
-                const uint32_t d = (uint32_t)gcall(func_00462F38, id, 0);
+                const uint32_t d = (uint32_t)gcall(TOD_HOOK(WEAPON_DESC_LOOKUP), id, 0);
                 if (d) { const uint32_t old = vm_read32(d + 0x18); vm_write32(d + 0x18, (old & ~3u) | (v & 3u));
                          fprintf(stderr, "[cheat] wflags %u: [%08X+18] %08X -> %08X\n", id, d, old, vm_read32(d + 0x18)); }
             }
@@ -1578,20 +1579,20 @@ bool run_oneshot(const std::string& c, uint32_t h, double t)
     if (c == "weapons") {
         int given = 0, tried = 0;
         for (unsigned idx = 0; idx < 31; idx++) {
-            if (!(uint32_t)gcall(func_00462F38, idx, 0)) continue;   /* no weapon definition in this slot */
+            if (!(uint32_t)gcall(TOD_HOOK(WEAPON_DESC_LOOKUP), idx, 0)) continue;   /* no weapon definition in this slot */
             tried++;
             /* hero_give_weapon core: r3 handle, r4 slot, r5 ammo (-1 = untouched), r6 xp (-1 = untouched) */
-            gcall(func_0028B4B8, h, idx, 99999, 100000000);
+            gcall(TOD_FUNC(0028B4B8), h, idx, 99999, 100000000);
             given++;
         }
-        gcall(func_0028AAD0, h, 0);   /* hero_give_all_ammo core: refill to the new (max-level) caps */
+        gcall(TOD_FUNC(0028AAD0), h, 0);   /* hero_give_all_ammo core: refill to the new (max-level) caps */
         fprintf(stderr, "[cheat] weapons: given %d (defs found %d of 31 slots), level max (xp=1e8, capped at each weapon top level), ammo full\n", given, tried);
         return true;
     }
     if (!c.compare(0, 6, "equip=")) {
         const long n = strtol(c.c_str() + 6, 0, 10);
         if (n < 0 || n >= 31) { fprintf(stderr, "[cheat] equip: slot %ld out of range 0..30\n", n); return true; }
-        gcall(func_002890D8, h, (uint64_t)(int64_t)n);   /* core of Lua hero_equip */
+        gcall(TOD_FUNC(002890D8), h, (uint64_t)(int64_t)n);   /* core of Lua hero_equip */
         fprintf(stderr, "[cheat] equip slot %ld via 002890D8\n", n);
         return true;
     }
@@ -1610,7 +1611,7 @@ bool run_oneshot(const std::string& c, uint32_t h, double t)
     if (c == "enemybighead") { set_cheat(3, 1); return true; }
     if (c == "mirror") { set_cheat(11, 1); return true; }
     if (c == "allcheats") {
-        gcall(func_0027A648, 0, 0);   /* enable_all_cheats core: profile cheat bytes 0 -> 1, points 840 */
+        gcall(TOD_FUNC(0027A648), 0, 0);   /* enable_all_cheats core: profile cheat bytes 0 -> 1, points 840 */
         for (long n = 0; n < 14; n++) set_cheat(n, 1);
         fprintf(stderr, "[cheat] allcheats done (func_0027A648 + states 0..13 = 1)\n");
         return true;
@@ -1620,7 +1621,7 @@ bool run_oneshot(const std::string& c, uint32_t h, double t)
         return true;
     }
     if (c == "giveammo") {
-        gcall(func_0028AAD0, h, 0);   /* hero_give_all_ammo core */
+        gcall(TOD_FUNC(0028AAD0), h, 0);   /* hero_give_all_ammo core */
         fprintf(stderr, "[cheat] give all ammo (0028AAD0) done\n");
         return true;
     }

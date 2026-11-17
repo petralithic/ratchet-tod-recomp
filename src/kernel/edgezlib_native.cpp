@@ -30,6 +30,7 @@
  * TOD_ZLIB_NATIVE=0 disables the handler's work (requests are dropped as before).
  */
 #include "ppu_recomp.h"
+#include "release/tod_addr.h"   /* this release's code addresses (versions/addresses.tsv) */
 #include "ps3emu/nid.h"
 
 #include <stdint.h>
@@ -50,7 +51,7 @@ extern uint8_t* vm_base;
 
 namespace {
 
-constexpr uint32_t kPushCallerLr = 0x007E3DE4;   /* return address of the bl at 0x7E3DE0 */
+constexpr uint32_t kPushCallerLr = TOD_ADDR(007E3DE4);   /* return address of the bl at 0x7E3DE0 */
 
 std::atomic<unsigned long long> s_n, s_fail, s_bytes_in, s_bytes_out;
 std::mutex s_counter_mtx;

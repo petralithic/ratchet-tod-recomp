@@ -15,6 +15,7 @@
 #include <atomic>
 #include <mutex>
 #include "ppu_recomp.h"                 /* the lifter's: ppu_context and the function table */
+#include "release/tod_addr.h"   /* this release's code addresses (versions/addresses.tsv) */
 #include "ps3emu/vm_watch.h"             /* texture write-watch (vm_watch_init, vm_commit_reserved) */
 #include "ps3emu/beacon.h"               /* walker / presenter phase beacons */
 #include "rsx_logv2.h"                   /* logv2: the structured second log (stall events) */
@@ -143,7 +144,7 @@ static long long s_syn_sleep_cyc;       /* the thread's cycle counter at its usl
 static int s_syn_diag_on = -1;
 static void syn_blk_note(unsigned kind, unsigned num, uint32_t lr, long long q0, long long q1)
 {
-    if (kind == 0 && lr == 0x006F1BA0u && (num == 141 || num == 142)) return;   /* the tick's own sleep */
+    if (kind == 0 && lr == TOD_ADDR(006F1BA0) && (num == 141 || num == 142)) return;   /* the tick's own sleep */
     static double f = 0; if (f == 0) { LARGE_INTEGER x; QueryPerformanceFrequency(&x); f = (double)x.QuadPart; }
     const double ms = (q1 - q0) * 1000.0 / f;
     SynBlk& b = s_synblk; b.n++; b.sum_ms += ms; if (kind) b.hle_ms += ms;
@@ -162,8 +163,8 @@ static void syn_tick_diag(ppu_context* ctx)
        * (priority inheritance), see ppu_sysprx.cpp lwmd_taken. */
       static int bst = -1;
       if (bst < 0) { const char* e = getenv("AUDIO_SYN_LOCK_BOOST"); bst = (e && e[0] == '1') ? 1 : 0; }
-      if (bst > 0 && (uint32_t)ctx->lr == 0x006F1BA0u && g_syn_boost_tid == 0) { g_syn_boost_tid = (unsigned)ctx->thread_id; fprintf(stderr, "[syn-diag] lock boost on for thread %u\n", g_syn_boost_tid); } }
-    if (s_syn_diag_on <= 0 || (uint32_t)ctx->lr != 0x006F1BA0u) return;
+      if (bst > 0 && (uint32_t)ctx->lr == TOD_ADDR(006F1BA0) && g_syn_boost_tid == 0) { g_syn_boost_tid = (unsigned)ctx->thread_id; fprintf(stderr, "[syn-diag] lock boost on for thread %u\n", g_syn_boost_tid); } }
+    if (s_syn_diag_on <= 0 || (uint32_t)ctx->lr != TOD_ADDR(006F1BA0)) return;
     static double f = 0, cpus = 1;          /* QPC ticks/s, thread cycles per us */
     static long long tl = 0, tcyc = 0;      /* previous tick entry */
     static unsigned nt = 0, hov[5], hwk[5]; static double t5 = 0, dtmax = 0, ovmax = 0, wkmax = 0, cpumax = 0, blkmax = 0;
@@ -211,13 +212,13 @@ static void syn_tick_diag(ppu_context* ctx)
 }
 extern "C" void tod_fntrace(unsigned addr, ppu_context* ctx)
 {
-    if (addr == 0x0028BD60) {   /* set_follow_cam(handle, ...): always, the bot needs it */
+    if (addr == TOD_ADDR(0028BD60)) {   /* set_follow_cam(handle, ...): always, the bot needs it */
         if ((unsigned)ctx->gpr[3] != g_tod_hero_handle)
             fprintf(stderr, "[bot] set_follow_cam handle=%08X\n", (unsigned)ctx->gpr[3]);
         g_tod_hero_handle = (unsigned)ctx->gpr[3];
         return;
     }
-    if (addr == 0x006F17EC) {   /* TOD_SND49_FIX (default ON): REALTIME_MOVIE (group 49) cue voices (645C48: +0x5C=10 = no auto-end, vtbl 855E00 +0x34 stub
+    if (addr == TOD_ADDR(006F17EC)) {   /* TOD_SND49_FIX (default ON): REALTIME_MOVIE (group 49) cue voices (645C48: +0x5C=10 = no auto-end, vtbl 855E00 +0x34 stub
                                  * returns 0) only end by an explicit stop (5B2150 -> flags+0x64 |= 4) that never arrives with -no_movies: the voice keeps the
                                  * ducking rule 0 (x0.45 on all SFX groups) forever. After TOD_SND49_SECS (default 120) in st=4, set the kill flag so
                                  * 5B9850 goes 4->7->0 and the REAPER (5B29B8) frees it. */
@@ -247,7 +248,7 @@ extern "C" void tod_fntrace(unsigned addr, ppu_context* ctx)
             }
         }
     }
-    if (addr == 0x005E9150 || addr == 0x005F4198 || addr == 0x005E8A78 || addr == 0x005E5C08) {
+    if (addr == TOD_ADDR(005E9150) || addr == TOD_ADDR(005F4198) || addr == TOD_ADDR(005E8A78) || addr == TOD_ADDR(005E5C08)) {
         /* TOD_FXLOG=1: outcome of every FX spawn, per effect id (notes: fx_spawn_hook.md). The core 5E9150
          * calls the cull/LOD test 5F4198, then the pool alloc 5E8A78, then 5E5C08 only on success, all on
          * the caller's thread: a spawn whose next stage never comes was dropped at that stage. "lod" = culled
@@ -259,7 +260,7 @@ extern "C" void tod_fntrace(unsigned addr, ppu_context* ctx)
          * vanished -- beams, trails, the Groovitron's lights -- so 0 is not "full detail". */
         static int pin = -2;
         if (pin == -2) { const char* e = getenv("TOD_FX_DETAIL"); pin = e ? atoi(e) : -1; }
-        if (addr == 0x005F4198 && pin >= 0) {
+        if (addr == TOD_ADDR(005F4198) && pin >= 0) {
             const unsigned cfg = vm_read32(0x106EE7FC);
             if (cfg >= 0x10000000u && cfg < 0x40000000u) vm_write32(cfg + 0x70C, (unsigned)pin);
         }
@@ -274,7 +275,7 @@ extern "C" void tod_fntrace(unsigned addr, ppu_context* ctx)
             else if (stage == 2) c_alloc[cur]++;
             stage = 0;
         };
-        if (addr == 0x005E9150) {
+        if (addr == TOD_ADDR(005E9150)) {
             settle();
             cur = (unsigned)ctx->gpr[3] & 0xFFFF; lod = 0;
             if (cur >= NID) return;
@@ -288,14 +289,14 @@ extern "C" void tod_fntrace(unsigned addr, ppu_context* ctx)
             }
         } else if (!stage) {
             return;
-        } else if (addr == 0x005F4198) {   /* r4 = def */
+        } else if (addr == TOD_ADDR(005F4198)) {   /* r4 = def */
             const unsigned cfg = vm_read32(0x106EE7FC);
             if (cfg >= 0x10000000u && cfg < 0x40000000u) {
                 const unsigned d = vm_read32(cfg + 0x70C);
                 detail = d;
                 lod = d > vm_read8((unsigned)ctx->gpr[4] + 0x99);
             }
-        } else if (addr == 0x005E8A78) {
+        } else if (addr == TOD_ADDR(005E8A78)) {
             stage = 2;
         } else {
             c_ok[cur]++; stage = 0;
@@ -325,7 +326,7 @@ extern "C" void tod_fntrace(unsigned addr, ppu_context* ctx)
         }
         return;
     }
-    if (addr == 0x006F17EC) syn_tick_diag(ctx);
+    if (addr == TOD_ADDR(006F17EC)) syn_tick_diag(ctx);
     static int on = -1;
     if (on < 0) on = getenv("TOD_FNTRACE") ? 1 : 0;
     if (!on) return;
@@ -342,7 +343,7 @@ extern "C" void tod_fntrace(unsigned addr, ppu_context* ctx)
     double t = (double)GetTickCount64()/1000.0;
     unsigned r3 = (unsigned)ctx->gpr[3];
     auto F = [](unsigned a) { unsigned u = vm_read32(a); float f; memcpy(&f, &u, 4); return (double)f; };
-    if (addr == 0x005AD700 || addr == 0x005AD7A8) {   /* voice add/remove to its group's list (voice+0x20 = group idx): group 49 REALTIME_MOVIE only */
+    if (addr == TOD_ADDR(005AD700) || addr == TOD_ADDR(005AD7A8)) {   /* voice add/remove to its group's list (voice+0x20 = group idx): group 49 REALTIME_MOVIE only */
         const unsigned w20 = vm_read32(r3 + 0x20);
         if (w20 == 49 || (w20 >> 16) == 49 || (w20 >> 24) == 49 || (w20 & 0xFF) == 49) {
             static int lines = 0;
@@ -354,9 +355,9 @@ extern "C" void tod_fntrace(unsigned addr, ppu_context* ctx)
         }
         return;
     }
-    if (addr == 0x005ADB78 || addr == 0x005ADBF8 || addr == 0x005AE0A8 || addr == 0x005AE1C0 || addr == 0x005ADC70 ||
-        addr == 0x005ADCB8 || addr == 0x005ADD00 || addr == 0x005AF458 || addr == 0x005AF170 || addr == 0x005AE798 ||
-        addr == 0x005AEBE8 || addr == 0x005AED20 || addr == 0x005AF320 || addr == 0x005B4B10 || addr == 0x005AE558) {
+    if (addr == TOD_ADDR(005ADB78) || addr == TOD_ADDR(005ADBF8) || addr == TOD_ADDR(005AE0A8) || addr == TOD_ADDR(005AE1C0) || addr == TOD_ADDR(005ADC70) ||
+        addr == TOD_ADDR(005ADCB8) || addr == TOD_ADDR(005ADD00) || addr == TOD_ADDR(005AF458) || addr == TOD_ADDR(005AF170) || addr == TOD_ADDR(005AE798) ||
+        addr == TOD_ADDR(005AEBE8) || addr == TOD_ADDR(005AED20) || addr == TOD_ADDR(005AF320) || addr == TOD_ADDR(005B4B10) || addr == TOD_ADDR(005AE558)) {
         /* SCREAM sound-group API (5ADB78 fade, 5ADBF8 fade from, 5AE0A8/5AE1C0 mask fades, 5ADC70/CB8/D00 set +0/+4/+8,
          * 5AF458/5AF170 solo/unsolo, 5AE798/5AEBE8 mute, 5AED20/5AF320 unmute, 5B4B10 reset, 5AE558 reset fades) */
         if (n <= 400)
@@ -364,11 +365,11 @@ extern "C" void tod_fntrace(unsigned addr, ppu_context* ctx)
                     (unsigned)ctx->gpr[4], (unsigned)ctx->gpr[5], (unsigned)ctx->gpr[6], ctx->fpr[1], ctx->fpr[2], ctx->fpr[3], (unsigned)ctx->lr);
         return;
     }
-    if (addr == 0x002500F8) {   /* sound group fade(group, kind 0 vol/1 lowpass/2 pitch, target, seconds); 277C80 = Lua group_fade_vol */
+    if (addr == TOD_ADDR(002500F8)) {   /* sound group fade(group, kind 0 vol/1 lowpass/2 pitch, target, seconds); 277C80 = Lua group_fade_vol */
         fprintf(stderr, "[sndfade] 2500F8 #%u t=%.3f group=%d kind=%d target=%g time=%g lr=%08X\n", n, t, (int)r3, (int)ctx->gpr[4], ctx->fpr[1], ctx->fpr[2], (unsigned)ctx->lr);
         return;
     }
-    if (addr == 0x005A78F8) {   /* pad module: r3 = module base (r25) */
+    if (addr == TOD_ADDR(005A78F8)) {   /* pad module: r3 = module base (r25) */
         static unsigned last = 0xFFFFFFFF; static int lines = 0;
         r3 = vm_read32((unsigned)ctx->gpr[2] - 0x7EAC); unsigned d2 = vm_read16(r3 + 0x41C + 0x92), d1 = vm_read16(r3 + 0x41C + 0x90);
         unsigned key = (d1 << 16) | d2;
@@ -384,7 +385,7 @@ extern "C" void tod_fntrace(unsigned addr, ppu_context* ctx)
         }
         return;
     }
-    if (addr == 0x00263120) {   /* HUD object G = r3 */
+    if (addr == TOD_ADDR(00263120)) {   /* HUD object G = r3 */
         static unsigned lst = 0xFFFFFFFF; static unsigned l8 = 0;
         unsigned st = vm_read32(r3 + 0x6C); float f8 = (float)F(r3 + 0x3D8);
         unsigned b8; memcpy(&b8, &f8, 4);
@@ -396,7 +397,7 @@ extern "C" void tod_fntrace(unsigned addr, ppu_context* ctx)
         }
         return;
     }
-    if (addr == 0x0069B590) {
+    if (addr == TOD_ADDR(0069B590)) {
         { unsigned lr_ = (unsigned)ctx->lr;
           if (lr_ == 0x226008 || lr_ == 0x226020) {
             unsigned r4e = (unsigned)ctx->gpr[4]; double p = F(r4e), dt = ctx->fpr[1] * F(r3 + 4);
@@ -412,7 +413,7 @@ extern "C" void tod_fntrace(unsigned addr, ppu_context* ctx)
         }
         return;
     }
-    if (addr == 0x006F17EC) {   /* every 2 s: SCREAM sound-group fade state (table [[0x8A80C8]], 0xB0 a group;
+    if (addr == TOD_ADDR(006F17EC)) {   /* every 2 s: SCREAM sound-group fade state (table [[0x8A80C8]], 0xB0 a group;
                                     * 3 fades at +0x50 + kind*24: vol, low-pass, pitch; +0x10 -> live value) */
         static double tg = 0;
         if (t - tg >= 2.0) {
@@ -461,7 +462,7 @@ extern "C" void tod_fntrace(unsigned addr, ppu_context* ctx)
             }
         }
     }
-    if (addr == 0x006F17EC) {   /* NextSynth audio tick (syn_tick_timer_thread): lag of the producer behind the reader */
+    if (addr == TOD_ADDR(006F17EC)) {   /* NextSynth audio tick (syn_tick_timer_thread): lag of the producer behind the reader */
         const unsigned toc = (unsigned)ctx->gpr[2];
         auto G = [&](int off) { return vm_read32(vm_read32(toc + off)); };
         const unsigned ri = vm_read32(vm_read32(vm_read32(toc - 0x4994)) + 4) & 7, w = G(-0x497C), Nq = G(-0x48E8);
@@ -504,9 +505,9 @@ extern "C" void tod_fntrace(unsigned addr, ppu_context* ctx)
         }
         return;
     }
-    if (addr == 0x0026D000 || addr == 0x002511F8) {   /* HUD "triangle pressed?" + its press query (h5142.md) */
+    if (addr == TOD_ADDR(0026D000) || addr == TOD_ADDR(002511F8)) {   /* HUD "triangle pressed?" + its press query (h5142.md) */
         static std::atomic<unsigned> lastH{0};
-        if (addr == 0x0026D000) {
+        if (addr == TOD_ADDR(0026D000)) {
             lastH = r3;
             unsigned toc = (unsigned)ctx->gpr[2], ctr = vm_read32(vm_read32(toc - 0x7340) + 0xD0);
             /* the triangle binding at H+0x1108: state mask +0xC (bit 0 = pressed), manager slot +0x44 (-1 = not registered) */
@@ -547,7 +548,7 @@ extern "C" void tod_fntrace(unsigned addr, ppu_context* ctx)
      * inactive; 65B468 = the quad draw. Per root: each child panel's vptr,
      * state, request, alpha, children -- printed when it changes. Per 2 s: the
      * quad draws by caller. */
-    if (addr == 0x0065CA80) {
+    if (addr == TOD_ADDR(0065CA80)) {
         const unsigned node = r3;
         if (vm_read32(node + 0x54) != 0) return;   /* only roots */
         char sig[1024]; int o = 0;
@@ -569,7 +570,7 @@ extern "C" void tod_fntrace(unsigned addr, ppu_context* ctx)
             fprintf(stderr, "[anark] t=%.3f %s\n", t, sig); }
         return;
     }
-    if (addr == 0x0065B468) {
+    if (addr == TOD_ADDR(0065B468)) {
         static std::atomic<unsigned> lrs[16], cnts[16]; static double t0 = 0;
         const unsigned lr = (unsigned)ctx->lr;
         for (int i = 0; i < 16; i++) {
@@ -606,7 +607,7 @@ extern "C" void tod_fntrace(unsigned addr, ppu_context* ctx)
             fprintf(stderr, "\n"); }
         return;
     }
-    if (addr == 0x0028D4E8) {
+    if (addr == TOD_ADDR(0028D4E8)) {
         if (n <= 300)
             fprintf(stderr, "[whud] 28D4E8 #%u t=%.3f state=%u secs=%d lr=%08X\n", n, t, r3, (int)ctx->gpr[4], (unsigned)ctx->lr);
         return;
@@ -1219,7 +1220,7 @@ static void tod_usleep_pre(ppu_context* ctx, uint64_t* usec)
 {
     waitdiag_note(ctx, *usec);
 #ifdef _WIN32   /* the synth tick diagnostics and AUDIO_SYN_SPIN use QPC, thread cycle counters and waitable timers */
-    if ((uint32_t)ctx->lr != 0x006F1BA0u) return;
+    if ((uint32_t)ctx->lr != TOD_ADDR(006F1BA0)) return;
     { /* AUDIO_SYN_PERIOD_LOG=<ms>: the synth tick's own cadence (aud103). One line per gap between two of its sleeps longer than <ms>,
        * on the same clock as the [audio-gap] lines (QPC ms), with the sleep it asked for and the RSX frame. */
       static int thr = -1; static long long last;

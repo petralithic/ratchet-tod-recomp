@@ -10,13 +10,14 @@
  *     P11 = 2.29603 (horizontal field of view 75.5 deg, vertical 47.0 deg, |P11/P00| = 16/9). The projection is built when a
  *     camera is set up (and every frame in some scripted shots) and multiplied by the view each frame (func_00599480 ->
  *     camera+0x150), so the culling and every view-projection copy follow it.
- * Both builders are renamed *_lifted (tools/aspect_proj_ppu_patch.cmake); here the lifted code runs and then, for a projection
+ * Both builders are renamed *_lifted (tools/tod_release.cmake); here the lifted code runs and then, for a projection
  * whose |P11/P00| is 16/9, P00 is divided by s = aspect / (16/9): the vertical field of view stays, the horizontal one widens
  * (tan(h'/2) = tan(h/2) * s). Off-centre terms (P20, jitter) are ratios of the same extents and do not change. Projections of
  * another shape (shadow maps, square render targets) are left alone.
  * Off (no TOD_ASPECT, or TOD_ASPECT_HOR=0): nothing is touched; the picture is stretched as in 1.2.0.
  */
 #include "ppu_recomp.h"
+#include "release/tod_addr.h"   /* this release's code addresses (versions/addresses.tsv) */
 
 #include <math.h>
 #include <stdint.h>
@@ -24,8 +25,8 @@
 #include <stdlib.h>
 #include <string.h>
 
-void func_00597328_lifted(ppu_context* ctx);
-void func_005973E0_lifted(ppu_context* ctx);
+void TOD_HOOK_LIFTED(ASPECT_PROJECTION)(ppu_context* ctx);
+void TOD_HOOK_LIFTED(ASPECT_PROJECTION_NEARFAR)(ppu_context* ctx);
 
 static float g_hor_s = 1.0f;     /* aspect / (16/9); 1 = off */
 
@@ -59,17 +60,17 @@ static void widen(uint32_t cam, int which)
                              cam, (double)p00, (double)(p00 / g_hor_s), (double)p11); }
 }
 
-void func_00597328(ppu_context* ctx)
+void TOD_HOOK(ASPECT_PROJECTION)(ppu_context* ctx)
 {
     const uint32_t cam = (uint32_t)ctx->gpr[3];
-    func_00597328_lifted(ctx);
+    TOD_HOOK_LIFTED(ASPECT_PROJECTION)(ctx);
     if (g_hor_s != 1.0f) widen(cam, 0);
 }
 
-void func_005973E0(ppu_context* ctx)
+void TOD_HOOK(ASPECT_PROJECTION_NEARFAR)(ppu_context* ctx)
 {
     const uint32_t cam = (uint32_t)ctx->gpr[3];
-    func_005973E0_lifted(ctx);
+    TOD_HOOK_LIFTED(ASPECT_PROJECTION_NEARFAR)(ctx);
     if (g_hor_s != 1.0f) widen(cam, 1);
 }
 

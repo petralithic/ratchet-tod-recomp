@@ -7,7 +7,7 @@
 # as in a real build. Nothing is linked. Used to keep the non-renderer port building on macOS
 # until the NA hook map (docs/macos-port-plan.md, M2) lets the full game link.
 #
-#   tools/check_port_posix.sh [BUILD_DIR]     (default build_posix_check)
+#   [TOD_RELEASE=BCUS98127] tools/check_port_posix.sh [BUILD_DIR]     (default build_posix_check)
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
@@ -17,13 +17,22 @@ PY="$ROOT/.venv/bin/python"
 mkdir -p "$OUT/hdr" "$OUT/gen" "$OUT/obj"
 
 "$PY" -I ps3recomp/tools/make_smoke_elf.py --out "$OUT/hdr/smoke.elf" --header "$OUT/hdr/ppu_recomp_base.h" >/dev/null
+# gen/tod_release.h as tools/tod_release.cmake writes it, for TOD_RELEASE (default BCES00052), and a
+# declaration (plain and _lifted) for every function of versions/addresses.tsv in that release.
+REL="${TOD_RELEASE:-BCES00052}"
+case "$REL" in BCES00052) COL=1 ;; BCUS98127) COL=2 ;; *) echo "TOD_RELEASE=$REL: use BCES00052 or BCUS98127" >&2; exit 1 ;; esac
+{
+  echo '#pragma once'
+  echo "#define TOD_RELEASE_ID \"$REL\""
+  grep -v '^#' versions/addresses.tsv | grep -v '^eu' | awk -F'\t' -v c=$COL '{ print "#define TOD_A_" $1 " " $c; if ($4 != "") print "#define TOD_H_" $4 " " $c }'
+} > "$OUT/gen/tod_release.h"
 {
   echo '#pragma once'
   echo '#include "ppu_recomp_base.h"'
   echo '#ifdef __cplusplus'
   echo 'extern "C" {'
   echo '#endif'
-  grep -rhoE 'func_[0-9A-Fa-f]{8}(_lifted)?' src | sort -u | sed 's/.*/void &(ppu_context* ctx);/'
+  grep -v '^#' versions/addresses.tsv | grep -v '^eu' | awk -F'\t' -v c=$COL '$3 == "fn" { print "void func_" $c "(ppu_context* ctx); void func_" $c "_lifted(ppu_context* ctx);" }'
   echo '#ifdef __cplusplus'
   echo '}'
   echo '#endif'

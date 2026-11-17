@@ -11,17 +11,18 @@
  * the equipped armor's helmet, 0 -> Ratchet's own head. TOD_REMOVE_HELMET = 1 makes that one read answer 0, the game's own
  * "Remove Helmet" look: the armor body stays, the helmet goes, nothing is written to the hero.
  *
- * Both hooks come from tools/armor_look_ppu_patch.cmake. Both settings are read again every 30 frames, so a change made in the
+ * Both hooks come from tools/tod_release.cmake. Both settings are read again every 30 frames, so a change made in the
  * F1 page or in the Options menu shows at once.
  */
 #include "ppu_recomp.h"
+#include "release/tod_addr.h"   /* this release's code addresses (versions/addresses.tsv) */
 
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-void func_001E2110_lifted(ppu_context* ctx);
+void TOD_HOOK_LIFTED(ARMOR_GETTER)(ppu_context* ctx);
 
 static int env_is(const char* key, const char* const* on)
 {
@@ -44,17 +45,17 @@ static int armor_hidden(void)
     return v;
 }
 
-void func_001E2110(ppu_context* ctx)
+void TOD_HOOK(ARMOR_GETTER)(ppu_context* ctx)
 {
     const uint32_t ret = (uint32_t)ctx->lr;
-    func_001E2110_lifted(ctx);
+    TOD_HOOK_LIFTED(ARMOR_GETTER)(ctx);
     { /* TOD_ARMOR_LOOK_FORCE=1..4 (debug, 09/11): the look of that armor whatever is equipped (Clank tests with an armored Ratchet
        * on a level loaded with -level, where the save's inventory is not used). Look only: protection and saves are unchanged. */
       static int f = -1;
       if (f < 0) { const char* e = getenv("TOD_ARMOR_LOOK_FORCE"); f = e ? atoi(e) : 0; if (f < 0 || f > 4) f = 0;
                    if (f) fprintf(stderr, "[armor] TOD_ARMOR_LOOK_FORCE=%d (debug: armor look forced)\n", f); }
-      if (f && ret == 0x001E4D24u) ctx->gpr[3] = (uint64_t)f; }
-    if (ret == 0x001E4D24u && ctx->gpr[3] != 0 && armor_hidden()) ctx->gpr[3] = 0;
+      if (f && ret == TOD_ADDR(001E4D24)) ctx->gpr[3] = (uint64_t)f; }
+    if (ret == TOD_ADDR(001E4D24) && ctx->gpr[3] != 0 && armor_hidden()) ctx->gpr[3] = 0;
 }
 
 /* barefoot (09/11): the hero's visible mesh groups, a 64-bit mask at moby+0x118 built by func_001E4CC0 from the

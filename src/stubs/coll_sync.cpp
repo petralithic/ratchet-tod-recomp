@@ -4,7 +4,7 @@
  * func_004A3288 = sottomissione dello SLOT sincrono (record da 160 B a [TOC+0x6CA4] = 10612D80) alle due raw SPU di collisione
  * (img 110 broad + img 111 narrow). Il chiamante (4A3E20 stadio 1, 4A3038 stadio 2, per 63DEF0) poi ATTENDE il completamento
  * (word16 rec+0xC bit 0x100, word16 rec+0x18 bit 0x8000). Questo file sostituisce func_004A3288 (la definizione lifted e' stata
- * rinominata func_004A3288_lifted da tools\coll_sync_ppu_patch.cmake) e, per i tipi 0..2, esegue il ticket in modo nativo nel
+ * rinominata func_004A3288_lifted da tools/tod_release.cmake) e, per i tipi 0..2, esegue il ticket in modo nativo nel
  * thread chiamante (spu_coll_sync.c: motore di coll53) invece di svegliare le raw SPU.
  *
  * Il "kick" del lifted e' una OR su una parola puntata da [(TOC[0x6C80] + 0x100000) + 0x10] (la linea di claim 10612E80): prima
@@ -15,6 +15,7 @@
  * Il nativo non gira mai in parallelo con le raw SPU sullo stesso record (il kick e' sempre DOPO il nativo).
  */
 #include "ppu_recomp.h"
+#include "release/tod_addr.h"   /* this release's code addresses (versions/addresses.tsv) */
 
 #include <stdint.h>
 #include <stdio.h>
@@ -36,7 +37,7 @@ unsigned spu_coll_sync_waitms(void);
 void spu_coll_sync_note(int what);
 int64_t sys_memory_allocate(ppu_context* ctx);
 }
-void func_004A3288_lifted(ppu_context* ctx);
+void TOD_HOOK_LIFTED(COLL_SYNC_SLOT)(ppu_context* ctx);
 
 namespace {
 
@@ -84,29 +85,29 @@ void real_kick(ppu_context* ctx, uint32_t greal, uint32_t toc)
 
 }  // namespace
 
-void func_004A3288(ppu_context* ctx)
+void TOD_HOOK(COLL_SYNC_SLOT)(ppu_context* ctx)
 {
     static const int mode = spu_coll_sync_mode();
-    if (mode == 0) { func_004A3288_lifted(ctx); return; }
+    if (mode == 0) { TOD_HOOK_LIFTED(COLL_SYNC_SLOT)(ctx); return; }
     spu_coll_sync_note(0);
-    if ((uint32_t)ctx->gpr[4] > 2u) { spu_coll_sync_note(2); func_004A3288_lifted(ctx); return; }          /* solo tipi 0..2 */
+    if ((uint32_t)ctx->gpr[4] > 2u) { spu_coll_sync_note(2); TOD_HOOK_LIFTED(COLL_SYNC_SLOT)(ctx); return; }          /* solo tipi 0..2 */
     int expect = 0;
-    if (!g_busy.compare_exchange_strong(expect, 1)) { spu_coll_sync_note(2); func_004A3288_lifted(ctx); return; }
+    if (!g_busy.compare_exchange_strong(expect, 1)) { spu_coll_sync_note(2); TOD_HOOK_LIFTED(COLL_SYNC_SLOT)(ctx); return; }
     struct Unbusy { ~Unbusy() { g_busy.store(0); } } unbusy;
-    if (!spu_coll_sync_prepare()) { spu_coll_sync_note(2); func_004A3288_lifted(ctx); return; }
+    if (!spu_coll_sync_prepare()) { spu_coll_sync_note(2); TOD_HOOK_LIFTED(COLL_SYNC_SLOT)(ctx); return; }
     const uint32_t toc = (uint32_t)ctx->gpr[2];
     const uint32_t base = vm_read32(toc + 0x6C80);
     const uint32_t gaddr = base + 0x100010u;
     const uint32_t greal = vm_read32(gaddr);
-    if (greal < 0x10000u || greal >= 0xE0000000u || (greal & 3u)) { spu_coll_sync_note(2); func_004A3288_lifted(ctx); return; }
+    if (greal < 0x10000u || greal >= 0xE0000000u || (greal & 3u)) { spu_coll_sync_note(2); TOD_HOOK_LIFTED(COLL_SYNC_SLOT)(ctx); return; }
     const uint32_t dummy = dummy_word(ctx);
-    if (!dummy) { spu_coll_sync_note(2); func_004A3288_lifted(ctx); return; }
+    if (!dummy) { spu_coll_sync_note(2); TOD_HOOK_LIFTED(COLL_SYNC_SLOT)(ctx); return; }
     spu_coll_sync_note(1);
 
     /* 1. il lifted prepara record, mondo e flag; il kick e l'attesa vanno sulla parola privata */
     vm_write32(dummy, 0);
     vm_write32(gaddr, dummy);
-    func_004A3288_lifted(ctx);
+    TOD_HOOK_LIFTED(COLL_SYNC_SLOT)(ctx);
     vm_write32(gaddr, greal);
     vm_write32(dummy, 0);
 

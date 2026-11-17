@@ -52,6 +52,7 @@
 #endif
 
 #include "ppu_recomp.h"
+#include "release/tod_addr.h"   /* this release's code addresses (versions/addresses.tsv) */
 #include "settings.h"
 #include "platform/tod_platform.h"   /* _stricmp off Windows */
 
@@ -63,16 +64,16 @@ int64_t sys_memory_allocate(ppu_context* ctx);
 void tod_menu_set_key(const char* key, const char* value);    /* tod_overlay.cpp: a static key / value (NULL = unset) */
 void tod_quit_open(void);                                    /* tod_overlay.cpp: quit125 confirmation box */
 }
-void func_00013080(ppu_context* ctx);   /* tolua_tonumber(L, idx, default) -> f1 */
-void func_000141B0(ppu_context* ctx);   /* tolua_pushnumber(L, f1) */
+void TOD_FUNC(00013080)(ppu_context* ctx);   /* tolua_tonumber(L, idx, default) -> f1 */
+void TOD_FUNC(000141B0)(ppu_context* ctx);   /* tolua_pushnumber(L, f1) */
 extern "C" void (*volatile g_cellPad_filter)(uint16_t* button);   /* cellPad.c (alert10) */
 extern "C" void tod_exit_open(void);   /* src/ui/tod_overlay.cpp: "Quit the game?" box (alert10) */
 extern "C" void tod_restart_open(void);   /* src/ui/tod_overlay.cpp: "Restart the game to apply the changes?" (alert10) */
-void func_0039D400(ppu_context* ctx);   /* native save_load_is_interface_displayed (frontend table, every frame; alert10) */
-void func_0002B960(ppu_context* ctx);   /* the same native in the pause / in-game table (10/11: pause hints) */
-void func_00033E38(ppu_context* ctx);   /* native is_weapon_available (in-game table; 10/11: TOD_SHOP_ALL_WEAPONS) */
-void func_000337A8(ppu_context* ctx);   /* native purchase_weapon (10/11: diagnostics) */
-void func_00030810(ppu_context* ctx);   /* the native get_current_level (pause / in-game table, EBOOT 0x8894BC -> OPD 0x85A770) */
+void TOD_FUNC(0039D400)(ppu_context* ctx);   /* native save_load_is_interface_displayed (frontend table, every frame; alert10) */
+void TOD_FUNC(0002B960)(ppu_context* ctx);   /* the same native in the pause / in-game table (10/11: pause hints) */
+void TOD_FUNC(00033E38)(ppu_context* ctx);   /* native is_weapon_available (in-game table; 10/11: TOD_SHOP_ALL_WEAPONS) */
+void TOD_FUNC(000337A8)(ppu_context* ctx);   /* native purchase_weapon (10/11: diagnostics) */
+void TOD_FUNC(00030810)(ppu_context* ctx);   /* the native get_current_level (pause / in-game table, EBOOT 0x8894BC -> OPD 0x85A770) */
 extern "C" int tod_lua_exec_L(uint32_t L, const char* src, uint32_t arg_tv);   /* src/input/tod_cheat.cpp: loadstring + pcall on that state */
 extern "C" int tod_lua_exec_L_quiet(uint32_t L, const char* src, uint32_t arg_tv);   /* the same, no log line (alert10) */
 extern "C" const char* tod_menu_text(int id);
@@ -83,7 +84,7 @@ extern "C" float tod_fe_shift720(void);
 extern "C" void tod_cheat_enqueue(const char* cmds);   /* tod_cheat.cpp (10/11: the CHEAT page) */
 extern "C" int tod_cheat_state(int id);
 extern "C" uint32_t tod_hero_handle(void);
-void func_00013F40(ppu_context* ctx);   /* tolua_pushstring(L, const char*) (PLT stub) */
+void TOD_FUNC(00013F40)(ppu_context* ctx);   /* tolua_pushstring(L, const char*) (PLT stub) */
 
 namespace {
 
@@ -195,14 +196,14 @@ void run_guest(void (*fn)(ppu_context*), ppu_context* ctx)
 double lua_arg(ppu_context* ctx, uint64_t L, int idx, double def)
 {
     ctx->gpr[3] = L; ctx->gpr[4] = (uint64_t)idx; ctx->fpr[1] = def;
-    run_guest(func_00013080, ctx);
+    run_guest(TOD_FUNC(00013080), ctx);
     return ctx->fpr[1];
 }
 
 void push_number(ppu_context* ctx, uint64_t L, double v)
 {
     ctx->gpr[3] = L; ctx->gpr[4] = 0; ctx->fpr[1] = v;
-    run_guest(func_000141B0, ctx);
+    run_guest(TOD_FUNC(000141B0), ctx);
 }
 
 void push_string(ppu_context* ctx, uint64_t L, const std::string& s)
@@ -221,7 +222,7 @@ void push_string(ppu_context* ctx, uint64_t L, const std::string& s)
     for (size_t i = 0; i < n; i++) vm_write8(s_buf + (uint32_t)i, (uint8_t)s[i]);
     vm_write8(s_buf + (uint32_t)n, 0);
     ctx->gpr[3] = L; ctx->gpr[4] = s_buf;
-    run_guest(func_00013F40, ctx);
+    run_guest(TOD_FUNC(00013F40), ctx);
     { static int ns = 0; if (ns++ < 40) fprintf(stderr, "[menu] pushed string \"%s\" (%u bytes at 0x%08X, first byte now 0x%02X)\n", s.c_str(), (unsigned)n, s_buf, (unsigned)vm_read8(s_buf)); }
 }
 
@@ -400,8 +401,8 @@ void zurkon_menu_check(ppu_context* ctx)
     ctx->gpr[1] = r1; ctx->gpr[2] = r2; ctx->gpr[3] = r3; ctx->gpr[4] = r4; ctx->lr = lr;
 }
 /* func_00033F10 = native is_weapon_owned, func_0002F778 = native has_owned_item (declared by ppu_recomp.h) */
-void host_weapon_owned(ppu_context* ctx) { zurkon_menu_check(ctx); func_00033F10(ctx); }
-void host_has_owned_item(ppu_context* ctx) { zurkon_menu_check(ctx); func_0002F778(ctx); }
+void host_weapon_owned(ppu_context* ctx) { zurkon_menu_check(ctx); TOD_FUNC(00033F10)(ctx); }
+void host_has_owned_item(ppu_context* ctx) { zurkon_menu_check(ctx); TOD_FUNC(0002F778)(ctx); }
 int s_quit_on = 1, s_quit_slide = 1, s_opt_slide = 5;   /* TOD_PAUSE_OPT_SLIDE: the Options list layout (5 = seven rows, centred; 3 = eight rows, one empty at the bottom) */
 int s_opt_page = 0;                          /* 10/11: op 22 / 23 */
 uint32_t s_quit_found_L;                     /* op 12: the Lua state whose list got the item */
@@ -452,7 +453,7 @@ void host_get_current_level(ppu_context* ctx)
             fprintf(stderr, "[quit] pause-menu hook run %d on Lua state %08X: %s, caller self %s, list %s\n", s_tries[k], L,
                     ok == 2 ? "ok, called with the caller" : ok ? "ok" : "failed", self_tv ? "table" : "-", s_quit_found_L == L ? "FOUND (QUIT added)" : "not yet");
     }
-    func_00030810(ctx);
+    TOD_FUNC(00030810)(ctx);
 }
 
 /* alert10: QUIT on the main menu. The bar (NUOVO GIOCO / CARICA / ELIMINA / OPZIONI) is the frontend scene's frontendHandler;
@@ -547,7 +548,7 @@ void host_fe_update(ppu_context* ctx)
     const int sel = ours ? (int)fe_arg(L, 2, 0.0f) : 0, v = ours ? (int)fe_arg(L, 3, 0.0f) : 0;
     if (ours) vm_write32(L + 8, vm_read32(L + 0xC));   /* the native takes no argument (tolua: "[no object] expected") */
     const uint64_t lr = ctx->lr;
-    func_0039D400(ctx);
+    TOD_FUNC(0039D400)(ctx);
     if (ours) {
         const uint64_t nres = ctx->gpr[3];
         { const uint32_t t = vm_read32(L + 8);   /* the native's own result: is the save / load list on screen (bool) */
@@ -651,7 +652,7 @@ void host_pause_update(ppu_context* ctx)
     /* 10/11 (user): not under the main list, where the row runs over the panel's frame; under the Options / Extras lists only */
     const int active = ours ? ((int)fe_arg(L, 2, 0.0f) && (int)fe_arg(L, 3, 0.0f) == 0 ? 1 : 0) : 0;
     if (ours) vm_write32(L + 8, vm_read32(L + 0xC));   /* the native takes no argument */
-    func_0002B960(ctx);
+    TOD_FUNC(0002B960)(ctx);
     if (ours) {
         const uint32_t t = vm_read32(L + 8);           /* the native's result: the save / load list is on screen (bool) */
         const int iface = ctx->gpr[3] >= 1 && vm_read32(t - 8u) == 1u && vm_read32(t - 4u) != 0u ? 1 : 0;
@@ -670,7 +671,7 @@ void host_weapon_available(ppu_context* ctx)
 {
     const uint32_t L = (uint32_t)ctx->gpr[3];
     const int w = (int)fe_arg(L, 1, -1.0f);
-    func_00033E38(ctx);
+    TOD_FUNC(00033E38)(ctx);
     const char* e = getenv("TOD_SHOP_ALL_WEAPONS");
     const int mode = e ? atoi(e) : 0;
     if (mode <= 0 || w < 1 || w > 15 || (w == 15 && mode < 2)) return;
@@ -695,7 +696,7 @@ void host_purchase_weapon(ppu_context* ctx)
     const int w = (int)fe_arg(L, 1, -1.0f);
     const uint32_t pd = vm_read32(0x0089F1B8u);
     const int b0 = (w >= 0 && w < 32 && pd >= 0x10000u) ? vm_read8(pd + (uint32_t)w * 20u + 0x10u) : -1;
-    func_000337A8(ctx);
+    TOD_FUNC(000337A8)(ctx);
     const int b1 = (w >= 0 && w < 32 && pd >= 0x10000u) ? vm_read8(pd + (uint32_t)w * 20u + 0x10u) : -1;
     const uint32_t top = vm_read32(L + 0x08);
     fprintf(stderr, "[shop] purchase_weapon(%d): owned %d -> %d, level %d, result tt %u val %u\n", w, b0, b1,
@@ -819,10 +820,10 @@ void install()
     { const char* q = getenv("TOD_PAUSE_QUIT"); s_quit_on = (q && q[0] == '0') ? 0 : 1; }
     { const char* q = getenv("TOD_PAUSE_QUIT_SLIDE"); s_quit_slide = (q && q[0] == '0') ? 0 : 1; }
     { const char* q = getenv("TOD_PAUSE_OPT_SLIDE"); if (q && q[0] >= '1' && q[0] <= '9') s_opt_slide = atoi(q); }
-    if (s_quit_on) ppu_register_function(0x00030810u, host_get_current_level);   /* quit125 */
-    ppu_register_function(0x0002F778u, host_has_owned_item);   /* 11/11: the same, DISPOSITIVI */
-    ppu_register_function(0x00033F10u, host_weapon_owned);   /* 11/11: TOD_ZURKON_WEAPON, the ARMI / DISPOSITIVI cells (kZurkonHook) */
-    ppu_register_function(0x00033E38u, host_weapon_available);   /* 10/11: TOD_SHOP_ALL_WEAPONS (does nothing while it is 0) */
+    if (s_quit_on) ppu_register_function(TOD_ADDR(00030810), host_get_current_level);   /* quit125 */
+    ppu_register_function(TOD_ADDR(0002F778), host_has_owned_item);   /* 11/11: the same, DISPOSITIVI */
+    ppu_register_function(TOD_ADDR(00033F10), host_weapon_owned);   /* 11/11: TOD_ZURKON_WEAPON, the ARMI / DISPOSITIVI cells (kZurkonHook) */
+    ppu_register_function(TOD_ADDR(00033E38), host_weapon_available);   /* 10/11: TOD_SHOP_ALL_WEAPONS (does nothing while it is 0) */
     if (const char* da = getenv("TOD_SHOP_DUMP_AT")) {   /* 10/11 test only: the weapon slots' bytes every 10 s from that second on */
         const int at = atoi(da);
         std::thread([at] {
@@ -837,11 +838,11 @@ void install()
             }
         }).detach();
     }
-    { const char* sa = getenv("TOD_SHOP_ALL_WEAPONS"); if (sa && atoi(sa) > 0) ppu_register_function(0x000337A8u, host_purchase_weapon); }
+    { const char* sa = getenv("TOD_SHOP_ALL_WEAPONS"); if (sa && atoi(sa) > 0) ppu_register_function(TOD_ADDR(000337A8), host_purchase_weapon); }
     { const char* ph = getenv("TOD_PAUSE_HINTS"); s_ph_on = (ph && ph[0] == '0') ? 0 : 1;
-      if (s_ph_on && s_quit_on) ppu_register_function(0x0002B960u, host_pause_update); else s_ph_on = 0; }   /* 10/11: #25 point 2 */
+      if (s_ph_on && s_quit_on) ppu_register_function(TOD_ADDR(0002B960), host_pause_update); else s_ph_on = 0; }   /* 10/11: #25 point 2 */
     { const char* mq = getenv("TOD_MAIN_QUIT"); s_fe_main_on = (mq && mq[0] == '0') ? 0 : 1;
-      if (s_fe_main_on) { ppu_register_function(0x0039D400u, host_fe_update); g_cellPad_filter = fe_pad_filter; } }   /* alert10: QUIT on the main menu */
+      if (s_fe_main_on) { ppu_register_function(TOD_ADDR(0039D400), host_fe_update); g_cellPad_filter = fe_pad_filter; } }   /* alert10: QUIT on the main menu */
     read_env();
     pick_language();
     { const char* ps = getenv("TOD_MENU_PRESELECT"); s_preselect = (ps && *ps == '1') ? 1 : 0; }

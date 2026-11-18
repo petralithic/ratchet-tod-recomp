@@ -97,7 +97,9 @@ endif()
 if(WIN32)
     set(PS3RECOMP_PAD_SDL2 ON CACHE BOOL "Windows: read controllers through SDL2 instead of XInput" FORCE)
 endif()
-set(PS3RECOMP_X86_LEVEL "x86-64-v3" CACHE STRING "-march for the ps3recomp runtime (main.cpp checks the CPU)")
+if(CMAKE_SYSTEM_PROCESSOR MATCHES "AMD64|x86_64")
+    set(PS3RECOMP_X86_LEVEL "x86-64-v3" CACHE STRING "-march for the ps3recomp runtime (main.cpp checks the CPU)")
+endif()
 # Keep the build machine's paths (and so the user name) out of the binary: __FILE__ becomes
 # relative to the source tree. Must come before add_subdirectory so it covers the runtime too.
 if(CMAKE_C_COMPILER_ID MATCHES "Clang")

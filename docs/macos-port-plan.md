@@ -237,6 +237,25 @@ in the ToD fork's additions; nothing architectural):
 This working branch points `.gitmodules` at `petralithic/ps3recomp` (branch `macos/m1-runtime`) so a clone
 fetches the runtime fixes; branches meant for upstream PRs keep the Re-TeRo17 URL until that PR merges.
 
+### M2 status (2026-11-17)
+
+- `versions/addresses.tsv` maps all 166 code addresses the port uses from BCES00052 to BCUS98127.
+  `tools/tod-fnmap check` verifies them against the NA ELF and lift:
+  - every function entry is a lifted NA function;
+  - every return address follows a call to the function the port names;
+  - 154 direct calls between mapped functions agree with the map.
+- Hooks are named by role (`TOD_HOOK(ROLE)`) and other addresses by EU key (`TOD_FUNC`/`TOD_ADDR`, `src/release/tod_addr.h`).
+  `tools/tod_release.cmake` renames each hook in whichever lifted unit holds it.
+  For BCES00052 every function name preprocesses to the same token as before.
+- NA build on macOS arm64, `-DTOD_RELEASE=BCUS98127`, null renderer, no SPU lift:
+  - configure finds all 33 hooks and the hero-update patch;
+  - **231 of 233 build steps succeed, including all 12 lifted units**;
+  - not yet linked.
+- Remaining errors: two boot-scaffold units of the runtime fork use Win32 names without the off-Windows shims, the same kind of fix as M1:
+  - `ps3recomp/runtime/ppu/ppu_hle.cpp`: `LARGE_INTEGER`;
+  - `ps3recomp/runtime/ppu/ppu_sysprx.cpp`: `QueryThreadCycleTime`.
+- Next: include `win32_compat.h`/`win32_diag_compat.h` there under `#ifndef _WIN32`, rebuild, link, then the M2 draft PR (cut from upstream `main`, without the `.gitmodules` change).
+
 ## 6. Milestones
 
 Each one is a separate, reviewable change; the EU/Windows build stays identical throughout.
